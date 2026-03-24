@@ -1151,6 +1151,8 @@ const StaffPortal = ({ user }: { user: AppUser }) => {
   const [smsPreview, setSmsPreview] = useState<Test | null>(null);
   const [showNewTest, setShowNewTest] = useState(false);
   const [updatingTest, setUpdatingTest] = useState<Test | null>(null);
+  const [pendingStatus, setPendingStatus] = useState<Test['status'] | null>(null);
+  const [showConfirmUpdate, setShowConfirmUpdate] = useState(false);
   const [processingReminders, setProcessingReminders] = useState(false);
 
   useEffect(() => {
@@ -1502,12 +1504,7 @@ const StaffPortal = ({ user }: { user: AppUser }) => {
                     <select 
                       defaultValue={updatingTest.status}
                       onChange={(e) => {
-                        const newStatus = e.target.value as Test['status'];
-                        let progress = updatingTest.progress;
-                        if (newStatus === 'Results ready') progress = 100;
-                        if (newStatus === 'In progress') progress = 50;
-                        if (newStatus === 'Pending') progress = 10;
-                        handleUpdateStatus(updatingTest.id, newStatus, progress);
+                        setPendingStatus(e.target.value as Test['status']);
                       }}
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm"
                     >
@@ -1520,12 +1517,83 @@ const StaffPortal = ({ user }: { user: AppUser }) => {
                   
                   <div className="flex space-x-3 pt-4">
                     <button 
-                      onClick={() => setUpdatingTest(null)}
-                      className="w-full bg-slate-100 text-slate-600 py-3 rounded-xl font-bold hover:bg-slate-200 transition-colors"
+                      onClick={() => {
+                        setUpdatingTest(null);
+                        setPendingStatus(null);
+                      }}
+                      className="flex-1 bg-slate-100 text-slate-600 py-3 rounded-xl font-bold hover:bg-slate-200 transition-colors"
                     >
-                      Close
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={() => {
+                        if (pendingStatus && pendingStatus !== updatingTest.status) {
+                          setShowConfirmUpdate(true);
+                        } else {
+                          setUpdatingTest(null);
+                        }
+                      }}
+                      className="flex-1 bg-fasil-teal text-white py-3 rounded-xl font-bold hover:bg-fasil-teal-dark transition-colors"
+                    >
+                      Save Changes
                     </button>
                   </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Confirmation Dialog for Status Update */}
+        <AnimatePresence>
+          {showConfirmUpdate && updatingTest && pendingStatus && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-6">
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl"
+              >
+                <div className="flex items-center space-x-3 mb-6">
+                  <div className="bg-amber-100 p-2 rounded-lg text-amber-600">
+                    <AlertTriangle className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-xl font-bold">Confirm Status Change</h3>
+                </div>
+                
+                <p className="text-slate-600 mb-6">
+                  Are you sure you want to change the status of <span className="font-bold">{updatingTest.patientName}'s</span> {updatingTest.type} from <span className="font-medium text-slate-400">{updatingTest.status}</span> to <span className="font-bold text-fasil-teal">{pendingStatus}</span>?
+                </p>
+
+                <div className="bg-fasil-mint/30 p-4 rounded-xl mb-8 border border-fasil-mint/50">
+                  <p className="text-xs text-fasil-teal-dark leading-relaxed">
+                    <Info className="w-3 h-3 inline mr-1 mb-0.5" />
+                    Changing the status will trigger automatic SMS notifications to the patient.
+                  </p>
+                </div>
+
+                <div className="flex space-x-3">
+                  <button 
+                    onClick={() => setShowConfirmUpdate(false)}
+                    className="flex-1 bg-slate-100 text-slate-600 py-3 rounded-xl font-bold hover:bg-slate-200 transition-colors"
+                  >
+                    Go Back
+                  </button>
+                  <button 
+                    onClick={() => {
+                      let progress = updatingTest.progress;
+                      if (pendingStatus === 'Results ready') progress = 100;
+                      if (pendingStatus === 'In progress') progress = 50;
+                      if (pendingStatus === 'Pending') progress = 10;
+                      handleUpdateStatus(updatingTest.id, pendingStatus, progress);
+                      setShowConfirmUpdate(false);
+                      setPendingStatus(null);
+                      toast.success(`Status updated to ${pendingStatus}`);
+                    }}
+                    className="flex-1 bg-fasil-teal text-white py-3 rounded-xl font-bold hover:bg-fasil-teal-dark transition-colors"
+                  >
+                    Confirm Change
+                  </button>
                 </div>
               </motion.div>
             </div>
