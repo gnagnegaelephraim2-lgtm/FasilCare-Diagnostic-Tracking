@@ -34,7 +34,7 @@ import { Test, UserRole, Appointment, PatientProfile, User as AppUser, MedicalHi
 import { explainTest, suggestStaffAction } from './services/geminiService';
 import { auth, db, loginWithGoogle, logout, OperationType, handleFirestoreError } from './firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, onSnapshot, collection, query, where, addDoc } from 'firebase/firestore';
+import { doc, getDoc, getDocs, setDoc, updateDoc, onSnapshot, collection, query, where, addDoc } from 'firebase/firestore';
 
 // --- Components ---
 
@@ -230,7 +230,7 @@ const RoleSelection = ({ onSelect }: { onSelect: (role: UserRole) => void }) => 
 };
 
 const PatientPortal = ({ user }: { user: AppUser }) => {
-  const [activeTab, setActiveTab] = useState<'tests' | 'appointments' | 'profile'>('tests');
+  const [activeTab, setActiveTab] = useState<'tests' | 'appointments' | 'profile' | 'visits'>('tests');
   const [tests, setTests] = useState<Test[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [profile, setProfile] = useState<PatientProfile | null>(null);
@@ -397,6 +397,13 @@ const PatientPortal = ({ user }: { user: AppUser }) => {
             <span>Appointments</span>
           </button>
           <button 
+            onClick={() => setActiveTab('visits')}
+            className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg font-medium transition-colors ${activeTab === 'visits' ? 'bg-fasil-mint text-fasil-teal' : 'text-slate-500 hover:bg-slate-50'}`}
+          >
+            <History className="w-4 h-4" />
+            <span>Visit Log</span>
+          </button>
+          <button 
             onClick={() => setActiveTab('profile')}
             className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg font-medium transition-colors ${activeTab === 'profile' ? 'bg-fasil-mint text-fasil-teal' : 'text-slate-500 hover:bg-slate-50'}`}
           >
@@ -434,7 +441,7 @@ const PatientPortal = ({ user }: { user: AppUser }) => {
           <header className="mb-8 flex justify-between items-end">
             <div>
               <h2 className="text-3xl font-bold text-slate-900">
-                {activeTab === 'tests' ? `Good morning, ${user.name.split(' ')[0]}` : activeTab === 'appointments' ? 'My Schedule' : 'My Profile'}
+                {activeTab === 'tests' ? `Good morning, ${user.name.split(' ')[0]}` : activeTab === 'appointments' ? 'My Schedule' : activeTab === 'visits' ? 'Visit History' : 'My Profile'}
               </h2>
               <p className="text-slate-500">Monday, 23 March 2026 · SSRN Hospital</p>
             </div>
@@ -582,6 +589,71 @@ const PatientPortal = ({ user }: { user: AppUser }) => {
                     </div>
                   ))
                 )}
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'visits' && (
+            <motion.div 
+              key="visits-view"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="space-y-6"
+            >
+              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                  <h3 className="font-bold text-slate-900">Appointment History</h3>
+                  <div className="text-xs text-slate-400">Chronological log of all recorded visits</div>
+                </div>
+                
+                <div className="divide-y divide-slate-100">
+                  {loading ? (
+                    <div className="p-12 text-center text-slate-400">Loading visit log...</div>
+                  ) : appointments.length === 0 ? (
+                    <div className="p-12 text-center text-slate-400">
+                      <History className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                      <p>No visit history found.</p>
+                    </div>
+                  ) : (
+                    [...appointments]
+                      .sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime())
+                      .map((apt, i) => (
+                        <div key={apt.id || i} className="p-6 hover:bg-slate-50/50 transition-colors">
+                          <div className="flex justify-between items-start mb-2">
+                            <div className="flex items-center space-x-3">
+                              <div className={`p-2 rounded-lg ${
+                                apt.status === 'Completed' ? 'bg-emerald-100 text-emerald-600' : 
+                                apt.status === 'Cancelled' ? 'bg-rose-100 text-rose-600' : 
+                                'bg-blue-100 text-blue-600'
+                              }`}>
+                                <Calendar className="w-5 h-5" />
+                              </div>
+                              <div>
+                                <h4 className="font-bold text-slate-900">{apt.doctorName}</h4>
+                                <p className="text-xs text-slate-500">{apt.department} · {apt.status}</p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm font-bold text-slate-900">
+                                {new Date(apt.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              </div>
+                              <div className="text-xs text-slate-400">{apt.time}</div>
+                            </div>
+                          </div>
+                          
+                          <div className="mt-4 flex justify-between items-end">
+                            <div className="text-xs text-slate-500 italic">
+                              {apt.reason ? `"${apt.reason}"` : "No reason provided"}
+                            </div>
+                            <div className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
+                              Recorded: {apt.createdAt ? new Date(apt.createdAt).toLocaleString() : "N/A"}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                  )}
+                </div>
               </div>
             </motion.div>
           )}
@@ -1004,6 +1076,7 @@ const StaffPortal = ({ user }: { user: AppUser }) => {
   const [smsPreview, setSmsPreview] = useState<Test | null>(null);
   const [showNewTest, setShowNewTest] = useState(false);
   const [updatingTest, setUpdatingTest] = useState<Test | null>(null);
+  const [processingReminders, setProcessingReminders] = useState(false);
 
   useEffect(() => {
     const testsQuery = query(collection(db, 'tests'));
@@ -1012,8 +1085,48 @@ const StaffPortal = ({ user }: { user: AppUser }) => {
       setLoading(false);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'tests'));
 
+    // Automated reminders check on mount
+    processAutomatedReminders();
+
     return () => unsubscribe();
   }, []);
+
+  const processAutomatedReminders = async () => {
+    setProcessingReminders(true);
+    try {
+      const q = query(
+        collection(db, 'appointments'),
+        where('status', '==', 'Upcoming'),
+        where('reminderSent', '==', false)
+      );
+      const snapshot = await getDocs(q);
+      const now = new Date();
+      const tomorrow = new Date(now);
+      tomorrow.setDate(now.getDate() + 1);
+      const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+      let sentCount = 0;
+      for (const docSnap of snapshot.docs) {
+        const apt = { id: docSnap.id, ...docSnap.data() } as Appointment;
+        if (apt.date === tomorrowStr) {
+          await updateDoc(doc(db, 'appointments', docSnap.id), {
+            reminderSent: true
+          });
+          sentCount++;
+        }
+      }
+
+      if (sentCount > 0) {
+        toast.success(`Automated Reminders Sent`, {
+          description: `Successfully sent ${sentCount} SMS reminders for tomorrow's appointments.`
+        });
+      }
+    } catch (err) {
+      console.error("Error processing reminders:", err);
+    } finally {
+      setProcessingReminders(false);
+    }
+  };
 
   const handleCreateTest = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -1050,8 +1163,25 @@ const StaffPortal = ({ user }: { user: AppUser }) => {
 
   const getAdvice = async (test: Test) => {
     if (staffAdvice[test.id]) return;
-    const advice = await suggestStaffAction(test);
-    setStaffAdvice(prev => ({ ...prev, [test.id]: advice }));
+    
+    try {
+      // Fetch patient profile
+      const profilesQuery = query(collection(db, 'profiles'), where('id', '==', test.patientId));
+      const profileSnapshot = await getDocs(profilesQuery);
+      const patientProfile = !profileSnapshot.empty ? profileSnapshot.docs[0].data() : null;
+      
+      // Fetch other tests for this patient
+      const otherTestsQuery = query(collection(db, 'tests'), where('patientId', '==', test.patientId));
+      const otherTestsSnapshot = await getDocs(otherTestsQuery);
+      const otherTests = otherTestsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      const advice = await suggestStaffAction(test, patientProfile, otherTests);
+      setStaffAdvice(prev => ({ ...prev, [test.id]: advice }));
+    } catch (err) {
+      console.error("Error getting AI advice:", err);
+      const advice = await suggestStaffAction(test);
+      setStaffAdvice(prev => ({ ...prev, [test.id]: advice }));
+    }
   };
 
   const delayedCount = tests.filter(t => {
@@ -1118,12 +1248,22 @@ const StaffPortal = ({ user }: { user: AppUser }) => {
         {/* Alert Banner */}
         <div className="flex justify-between items-center mb-8">
           <h2 className="text-2xl font-bold text-slate-900">Diagnostic Queue</h2>
-          <button 
-            onClick={() => setShowNewTest(true)}
-            className="bg-fasil-teal text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center shadow-sm hover:bg-fasil-teal-dark transition-colors"
-          >
-            <Plus className="w-4 h-4 mr-2" /> New Diagnostic Test
-          </button>
+          <div className="flex space-x-3">
+            <button 
+              onClick={processAutomatedReminders}
+              disabled={processingReminders}
+              className="bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-lg font-bold text-sm flex items-center shadow-sm hover:bg-slate-50 transition-colors disabled:opacity-50"
+            >
+              {processingReminders ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Bell className="w-4 h-4 mr-2" />}
+              Run Reminders
+            </button>
+            <button 
+              onClick={() => setShowNewTest(true)}
+              className="bg-fasil-teal text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center shadow-sm hover:bg-fasil-teal-dark transition-colors"
+            >
+              <Plus className="w-4 h-4 mr-2" /> New Diagnostic Test
+            </button>
+          </div>
         </div>
 
         {delayedCount > 0 && (

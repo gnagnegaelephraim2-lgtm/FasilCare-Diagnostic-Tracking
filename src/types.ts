@@ -21,6 +21,7 @@ export interface Appointment {
   reason?: string;
   status: "Upcoming" | "Completed" | "Cancelled";
   reminderSent: boolean;
+  createdAt?: string;
 }
 
 export interface MedicalHistoryEntry {
