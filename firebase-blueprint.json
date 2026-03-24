@@ -71,9 +71,36 @@
         "medicalHistory": {
           "type": "object",
           "properties": {
-            "illnesses": { "type": "array", "items": { "type": "string" } },
-            "surgeries": { "type": "array", "items": { "type": "string" } },
-            "chronicConditions": { "type": "array", "items": { "type": "string" } }
+            "illnesses": { 
+              "type": "array", 
+              "items": { 
+                "type": "object",
+                "properties": {
+                  "item": { "type": "string" },
+                  "timestamp": { "type": "string", "format": "date-time" }
+                }
+              } 
+            },
+            "surgeries": { 
+              "type": "array", 
+              "items": { 
+                "type": "object",
+                "properties": {
+                  "item": { "type": "string" },
+                  "timestamp": { "type": "string", "format": "date-time" }
+                }
+              } 
+            },
+            "chronicConditions": { 
+              "type": "array", 
+              "items": { 
+                "type": "object",
+                "properties": {
+                  "item": { "type": "string" },
+                  "timestamp": { "type": "string", "format": "date-time" }
+                }
+              } 
+            }
           }
         }
       },

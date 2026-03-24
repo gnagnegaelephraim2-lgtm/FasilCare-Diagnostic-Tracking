@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster, toast } from 'sonner';
-import { Test, UserRole, Appointment, PatientProfile, User as AppUser } from './types';
+import { Test, UserRole, Appointment, PatientProfile, User as AppUser, MedicalHistoryEntry } from './types';
 import { explainTest, suggestStaffAction } from './services/geminiService';
 import { auth, db, loginWithGoogle, logout, OperationType, handleFirestoreError } from './firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
@@ -153,7 +153,7 @@ const LandingPage = ({ onLogin }: { onLogin: () => void }) => {
               <div className="space-y-4">
                 <div className="bg-emerald-900/40 border border-emerald-500/30 p-4 rounded-2xl">
                   <p className="text-sm leading-relaxed">
-                    Your blood test results are ready. Return to Victoria Hospital, Room 4, 8am-12pm. Ref: VH-0312
+                    Your blood test results are ready. Return to SSRN Hospital, Room 4, 8am-12pm. Ref: VH-0312
                   </p>
                 </div>
                 <div className="bg-white/5 border border-white/10 p-4 rounded-2xl">
@@ -239,6 +239,8 @@ const PatientPortal = ({ user }: { user: AppUser }) => {
   const [explanation, setExplanation] = useState<string | null>(null);
   const [showBooking, setShowBooking] = useState(false);
   const [showEditProfile, setShowEditProfile] = useState(false);
+  const [showHistoryLog, setShowHistoryLog] = useState(false);
+  const [newMedicalItem, setNewMedicalItem] = useState({ type: 'illnesses' as keyof PatientProfile['medicalHistory'], content: '' });
 
   useEffect(() => {
     if (!user.uid) return;
@@ -302,6 +304,46 @@ const PatientPortal = ({ user }: { user: AppUser }) => {
     setExplaining(type);
     const text = await explainTest(type);
     setExplanation(text);
+  };
+
+  const handleAddMedicalEntry = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile || !newMedicalItem.content.trim()) return;
+
+    const entry: MedicalHistoryEntry = {
+      item: newMedicalItem.content.trim(),
+      timestamp: new Date().toISOString()
+    };
+
+    const updatedHistory = {
+      ...profile.medicalHistory,
+      [newMedicalItem.type]: [...(profile.medicalHistory[newMedicalItem.type] || []), entry]
+    };
+
+    try {
+      await updateDoc(doc(db, 'profiles', user.uid), { medicalHistory: updatedHistory });
+      setNewMedicalItem({ ...newMedicalItem, content: '' });
+      toast.success('Medical history updated');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `profiles/${user.uid}`);
+    }
+  };
+
+  const getChronologicalLog = () => {
+    if (!profile) return [];
+    const log: { type: string; item: string; timestamp: string }[] = [];
+    
+    Object.entries(profile.medicalHistory).forEach(([type, entries]) => {
+      (entries as any[]).forEach((entry: any) => {
+        log.push({
+          type: type === 'illnesses' ? 'Illness' : type === 'surgeries' ? 'Surgery' : 'Condition',
+          item: typeof entry === 'string' ? entry : entry.item,
+          timestamp: typeof entry === 'string' ? profile.createdAt || new Date().toISOString() : entry.timestamp
+        });
+      });
+    });
+
+    return log.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   };
 
   const bookAppointment = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -394,7 +436,7 @@ const PatientPortal = ({ user }: { user: AppUser }) => {
               <h2 className="text-3xl font-bold text-slate-900">
                 {activeTab === 'tests' ? `Good morning, ${user.name.split(' ')[0]}` : activeTab === 'appointments' ? 'My Schedule' : 'My Profile'}
               </h2>
-              <p className="text-slate-500">Monday, 23 March 2026 · Victoria Hospital</p>
+              <p className="text-slate-500">Monday, 23 March 2026 · SSRN Hospital</p>
             </div>
           <div className="flex space-x-2">
             {activeTab === 'appointments' && (
@@ -435,7 +477,7 @@ const PatientPortal = ({ user }: { user: AppUser }) => {
                 </div>
                 <div>
                   <h4 className="font-bold text-emerald-900">Action needed</h4>
-                  <p className="text-emerald-700 text-sm">Your blood test results are ready. Return to Victoria Hospital, Room 4, between 8am–12pm.</p>
+                  <p className="text-emerald-700 text-sm">Your blood test results are ready. Return to SSRN Hospital, Room 4, between 8am–12pm.</p>
                 </div>
               </div>
 
@@ -557,12 +599,16 @@ const PatientPortal = ({ user }: { user: AppUser }) => {
                 <div className="lg:col-span-2 space-y-6">
                   <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
                     <div className="flex items-center space-x-6 mb-8">
-                      <div className="w-24 h-24 bg-fasil-teal rounded-3xl flex items-center justify-center text-white text-4xl font-bold shadow-lg">AM</div>
+                      <div className="w-24 h-24 bg-fasil-teal rounded-3xl flex items-center justify-center text-white text-4xl font-bold shadow-lg">
+                        {profile.name.split(' ').map(n => n[0]).join('')}
+                      </div>
                       <div>
                         <h3 className="text-2xl font-bold text-slate-900">{profile.name}</h3>
                         <p className="text-slate-500">Patient ID: {profile.id}</p>
                         <div className="flex space-x-4 mt-2">
-                          <span className="text-xs bg-slate-100 px-2 py-1 rounded text-slate-600">DOB: {new Date(profile.dateOfBirth).toLocaleDateString()}</span>
+                          <span className="text-xs bg-slate-100 px-2 py-1 rounded text-slate-600">
+                            DOB: {profile.dateOfBirth ? new Date(profile.dateOfBirth).toLocaleDateString() : 'Not set'}
+                          </span>
                           <span className="text-xs bg-fasil-mint px-2 py-1 rounded text-fasil-teal font-bold">Blood Type: O+</span>
                         </div>
                       </div>
@@ -601,16 +647,25 @@ const PatientPortal = ({ user }: { user: AppUser }) => {
 
                   {/* Medical History */}
                   <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
-                    <h4 className="text-lg font-bold text-slate-900 mb-6 flex items-center">
-                      <History className="w-5 h-5 mr-2 text-fasil-teal" /> Medical History
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div className="flex justify-between items-center mb-6">
+                      <h4 className="text-lg font-bold text-slate-900 flex items-center">
+                        <History className="w-5 h-5 mr-2 text-fasil-teal" /> Medical History
+                      </h4>
+                      <button 
+                        onClick={() => setShowHistoryLog(true)}
+                        className="text-xs font-bold text-fasil-teal hover:underline flex items-center"
+                      >
+                        <Clock className="w-3 h-3 mr-1" /> View History Log
+                      </button>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
                       <div>
                         <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Past Illnesses</div>
                         <ul className="space-y-2">
-                          {profile.medicalHistory.illnesses.map((item, i) => (
+                          {profile.medicalHistory.illnesses.map((entry, i) => (
                             <li key={i} className="text-sm text-slate-600 flex items-center">
-                              <span className="w-1.5 h-1.5 bg-slate-300 rounded-full mr-2" /> {item}
+                              <span className="w-1.5 h-1.5 bg-slate-300 rounded-full mr-2" /> {typeof entry === 'string' ? entry : entry.item}
                             </li>
                           ))}
                         </ul>
@@ -618,9 +673,9 @@ const PatientPortal = ({ user }: { user: AppUser }) => {
                       <div>
                         <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Surgeries</div>
                         <ul className="space-y-2">
-                          {profile.medicalHistory.surgeries.map((item, i) => (
+                          {profile.medicalHistory.surgeries.map((entry, i) => (
                             <li key={i} className="text-sm text-slate-600 flex items-center">
-                              <span className="w-1.5 h-1.5 bg-slate-300 rounded-full mr-2" /> {item}
+                              <span className="w-1.5 h-1.5 bg-slate-300 rounded-full mr-2" /> {typeof entry === 'string' ? entry : entry.item}
                             </li>
                           ))}
                         </ul>
@@ -628,13 +683,41 @@ const PatientPortal = ({ user }: { user: AppUser }) => {
                       <div>
                         <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Chronic Conditions</div>
                         <ul className="space-y-2">
-                          {profile.medicalHistory.chronicConditions.map((item, i) => (
+                          {profile.medicalHistory.chronicConditions.map((entry, i) => (
                             <li key={i} className="text-sm text-slate-600 flex items-center">
-                              <Heart className="w-3.5 h-3.5 text-rose-400 mr-2" /> {item}
+                              <Heart className="w-3.5 h-3.5 text-rose-400 mr-2" /> {typeof entry === 'string' ? entry : entry.item}
                             </li>
                           ))}
                         </ul>
                       </div>
+                    </div>
+
+                    <div className="pt-6 border-t border-slate-100">
+                      <h5 className="text-xs font-bold text-slate-400 uppercase mb-4">Add New Entry</h5>
+                      <form onSubmit={handleAddMedicalEntry} className="flex space-x-3">
+                        <select 
+                          value={newMedicalItem.type}
+                          onChange={(e) => setNewMedicalItem({ ...newMedicalItem, type: e.target.value as any })}
+                          className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-fasil-teal/20"
+                        >
+                          <option value="illnesses">Illness</option>
+                          <option value="surgeries">Surgery</option>
+                          <option value="chronicConditions">Condition</option>
+                        </select>
+                        <input 
+                          type="text"
+                          value={newMedicalItem.content}
+                          onChange={(e) => setNewMedicalItem({ ...newMedicalItem, content: e.target.value })}
+                          placeholder="e.g. Seasonal Flu, Appendectomy..."
+                          className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-fasil-teal/20"
+                        />
+                        <button 
+                          type="submit"
+                          className="bg-fasil-teal text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-fasil-teal-dark transition-colors"
+                        >
+                          Add
+                        </button>
+                      </form>
                     </div>
                   </div>
                 </div>
@@ -646,7 +729,7 @@ const PatientPortal = ({ user }: { user: AppUser }) => {
                       <ShieldCheck className="w-5 h-5 mr-2" /> Health Summary
                     </h4>
                     <p className="text-sm opacity-80 leading-relaxed">
-                      Your health records are encrypted and only accessible by authorized medical staff at Victoria Hospital.
+                      Your health records are encrypted and only accessible by authorized medical staff at SSRN Hospital.
                     </p>
                     <button className="mt-6 w-full bg-white/10 hover:bg-white/20 py-2 rounded-lg text-xs font-bold transition-colors border border-white/20">
                       Download Full Record (PDF)
@@ -785,6 +868,101 @@ const PatientPortal = ({ user }: { user: AppUser }) => {
           )}
         </AnimatePresence>
 
+        {/* History Log Modal */}
+        <AnimatePresence>
+          {showHistoryLog && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white rounded-2xl p-8 max-w-2xl w-full shadow-2xl max-h-[80vh] flex flex-col"
+              >
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-2xl font-bold text-slate-900 flex items-center">
+                    <Clock className="w-6 h-6 mr-2 text-fasil-teal" /> Medical History Log
+                  </h3>
+                  <button 
+                    onClick={() => setShowHistoryLog(false)}
+                    className="text-slate-400 hover:text-slate-600"
+                  >
+                    <Plus className="w-6 h-6 rotate-45" />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto pr-2 space-y-6">
+                  <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
+                    <h5 className="text-xs font-bold text-slate-400 uppercase mb-4">Add New Entry</h5>
+                    <form onSubmit={handleAddMedicalEntry} className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
+                      <select 
+                        value={newMedicalItem.type}
+                        onChange={(e) => setNewMedicalItem({ ...newMedicalItem, type: e.target.value as any })}
+                        className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-fasil-teal/20"
+                      >
+                        <option value="illnesses">Illness</option>
+                        <option value="surgeries">Surgery</option>
+                        <option value="chronicConditions">Condition</option>
+                      </select>
+                      <input 
+                        type="text"
+                        value={newMedicalItem.content}
+                        onChange={(e) => setNewMedicalItem({ ...newMedicalItem, content: e.target.value })}
+                        placeholder="e.g. Seasonal Flu, Appendectomy..."
+                        className="flex-1 bg-white border border-slate-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-fasil-teal/20"
+                      />
+                      <button 
+                        type="submit"
+                        className="bg-fasil-teal text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-fasil-teal-dark transition-colors"
+                      >
+                        Add
+                      </button>
+                    </form>
+                  </div>
+
+                  {getChronologicalLog().length === 0 ? (
+                    <div className="text-center py-12 text-slate-400">
+                      <History className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                      <p>No medical history entries found.</p>
+                    </div>
+                  ) : (
+                    <div className="relative border-l-2 border-slate-100 ml-3 pl-8 space-y-8">
+                      {getChronologicalLog().map((entry, i) => (
+                        <div key={i} className="relative">
+                          <div className="absolute -left-[41px] top-1 w-4 h-4 bg-white border-2 border-fasil-teal rounded-full" />
+                          <div className="flex flex-col">
+                            <span className="text-[10px] font-bold text-fasil-teal uppercase tracking-widest mb-1">
+                              {new Date(entry.timestamp).toLocaleDateString()} · {new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            <div className="flex items-center space-x-2 mb-1">
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                                entry.type === 'Illness' ? 'bg-amber-100 text-amber-700' : 
+                                entry.type === 'Surgery' ? 'bg-blue-100 text-blue-700' : 
+                                'bg-rose-100 text-rose-700'
+                              }`}>
+                                {entry.type}
+                              </span>
+                              <h5 className="text-sm font-bold text-slate-900">{entry.item}</h5>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-8 pt-6 border-t border-slate-100">
+                  <button 
+                    onClick={() => setShowHistoryLog(false)}
+                    className="w-full bg-slate-100 text-slate-600 py-3 rounded-xl font-bold hover:bg-slate-200 transition-colors"
+                  >
+                    Close Log
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
         {/* Gemini Explanation Modal */}
         <AnimatePresence>
           {explaining && (
@@ -901,7 +1079,7 @@ const StaffPortal = ({ user }: { user: AppUser }) => {
           </div>
           <div className="h-4 w-px bg-white/20 mx-2" />
           <div className="text-xs opacity-60 flex items-center space-x-4">
-            <span>Victoria Hospital</span>
+            <span>SSRN Hospital</span>
             <span>Dr. Patel</span>
             <span>Diagnostics</span>
           </div>
@@ -1062,7 +1240,7 @@ const StaffPortal = ({ user }: { user: AppUser }) => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Location</label>
-                      <input name="location" required className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm" placeholder="e.g. Victoria Hospital, Room 4" />
+                      <input name="location" required className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm" placeholder="e.g. SSRN Hospital, Room 4" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Time Slot / Schedule</label>
@@ -1262,7 +1440,10 @@ export default function App() {
           emergencyContact: { name: '', relationship: '', phone: '' },
           medicalHistory: { illnesses: [], surgeries: [], chronicConditions: [] }
         };
-        await setDoc(doc(db, 'profiles', user.uid), patientProfile);
+        await setDoc(doc(db, 'profiles', user.uid), {
+          ...patientProfile,
+          createdAt: new Date().toISOString()
+        });
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `users/${user.uid}`);

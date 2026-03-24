@@ -23,6 +23,11 @@ export interface Appointment {
   reminderSent: boolean;
 }
 
+export interface MedicalHistoryEntry {
+  item: string;
+  timestamp: string;
+}
+
 export interface PatientProfile {
   id: string;
   name: string;
@@ -37,9 +42,9 @@ export interface PatientProfile {
     phone: string;
   };
   medicalHistory: {
-    illnesses: string[];
-    surgeries: string[];
-    chronicConditions: string[];
+    illnesses: MedicalHistoryEntry[];
+    surgeries: MedicalHistoryEntry[];
+    chronicConditions: MedicalHistoryEntry[];
   };
 }
 
