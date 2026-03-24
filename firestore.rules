@@ -1,0 +1,151 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {uid}
+    // Fields:
+    //   - uid: string (required) - Firebase Auth UID
+    //   - email: string (required) - User email
+    //   - role: string (required, enum: ['patient', 'staff']) - User role
+    //   - name: string (optional) - User name
+    //   - patientId: string (optional) - Unique patient ID
+    //
+    // Collection: tests
+    // Document ID: {testId}
+    // Fields:
+    //   - patientId: string (required) - ID of the patient
+    //   - patientName: string (optional) - Name of the patient
+    //   - type: string (required) - Type of test
+    //   - status: string (required, enum: ['Results ready', 'In progress', 'Pending', 'Delayed'])
+    //   - waitingDays: number (optional)
+    //   - location: string (optional)
+    //   - timeSlot: string (optional)
+    //   - progress: number (optional)
+    //
+    // Collection: appointments
+    // Document ID: {appointmentId}
+    // Fields:
+    //   - patientId: string (required) - ID of the patient
+    //   - doctorName: string (required)
+    //   - department: string (required)
+    //   - date: string (required)
+    //   - time: string (required)
+    //   - status: string (required, enum: ['Upcoming', 'Completed', 'Cancelled'])
+    //   - reminderSent: bool (optional)
+    //
+    // Collection: profiles
+    // Document ID: {patientId}
+    // Fields:
+    //   - id: string (required) - Patient ID
+    //   - name: string (required)
+    //   - email: string (required)
+    //   - phone: string (optional)
+    //   - address: string (optional)
+    //   - primaryPhysician: string (optional)
+    //   - emergencyContact: map (optional)
+    //   - medicalHistory: map (optional)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff' ||
+          (request.auth.token.email == "gnagnegaelephraim2@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isPatient() {
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'patient';
+    }
+
+    function getPatientId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.patientId;
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasRequiredFields(['uid', 'email', 'role']) &&
+             data.uid is string &&
+             data.email is string &&
+             data.role in ['patient', 'staff'];
+    }
+
+    function isValidTest(data) {
+      return hasRequiredFields(['patientId', 'type', 'status']) &&
+             data.patientId is string &&
+             data.type is string &&
+             data.status in ['Results ready', 'In progress', 'Pending', 'Delayed'];
+    }
+
+    function isValidAppointment(data) {
+      return hasRequiredFields(['patientId', 'doctorName', 'department', 'date', 'time', 'status']) &&
+             data.patientId is string &&
+             data.doctorName is string &&
+             data.status in ['Upcoming', 'Completed', 'Cancelled'];
+    }
+
+    function isValidProfile(data) {
+      return hasRequiredFields(['id', 'name', 'email']) &&
+             data.id is string &&
+             data.name is string &&
+             data.email is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isAuthenticated() && isOwner(uid) && isValidUser(request.resource.data) && (request.resource.data.role == 'patient' || isAdmin());
+      allow update: if isAuthenticated() && isOwner(uid) && isValidUser(request.resource.data) && (request.resource.data.role == resource.data.role || isAdmin());
+    }
+
+    match /tests/{testId} {
+      allow read: if isAdmin() || (isPatient() && request.resource.data.patientId == getPatientId());
+      allow write: if isAdmin();
+    }
+
+    match /appointments/{appointmentId} {
+      allow read: if isAdmin() || (isPatient() && (resource == null || resource.data.patientId == getPatientId()));
+      allow create: if (isPatient() && request.resource.data.patientId == getPatientId() && isValidAppointment(request.resource.data)) || isAdmin();
+      allow update: if (isPatient() && resource.data.patientId == getPatientId() && request.resource.data.patientId == getPatientId() && isValidAppointment(request.resource.data)) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /profiles/{patientId} {
+      allow read: if isAdmin() || (isPatient() && patientId == getPatientId());
+      allow write: if isAdmin();
+    }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

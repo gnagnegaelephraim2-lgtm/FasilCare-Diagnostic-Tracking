@@ -1,0 +1,101 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and role information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["patient", "staff"], "description": "User role in the system" },
+        "name": { "type": "string" },
+        "patientId": { "type": "string", "description": "Unique patient ID for patients" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Test": {
+      "title": "Test",
+      "description": "Diagnostic test record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "patientName": { "type": "string" },
+        "patientId": { "type": "string" },
+        "type": { "type": "string" },
+        "requestedDate": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["Results ready", "In progress", "Pending", "Delayed"] },
+        "waitingDays": { "type": "number" },
+        "location": { "type": "string" },
+        "timeSlot": { "type": "string" },
+        "progress": { "type": "number" }
+      },
+      "required": ["patientId", "type", "status"]
+    },
+    "Appointment": {
+      "title": "Appointment",
+      "description": "Patient appointment record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "patientId": { "type": "string" },
+        "doctorName": { "type": "string" },
+        "department": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "time": { "type": "string" },
+        "reason": { "type": "string" },
+        "status": { "type": "string", "enum": ["Upcoming", "Completed", "Cancelled"] },
+        "reminderSent": { "type": "boolean" }
+      },
+      "required": ["patientId", "doctorName", "date", "time", "status"]
+    },
+    "PatientProfile": {
+      "title": "PatientProfile",
+      "description": "Detailed patient medical profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "dateOfBirth": { "type": "string", "format": "date" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "primaryPhysician": { "type": "string" },
+        "emergencyContact": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "relationship": { "type": "string" },
+            "phone": { "type": "string" }
+          }
+        },
+        "medicalHistory": {
+          "type": "object",
+          "properties": {
+            "illnesses": { "type": "array", "items": { "type": "string" } },
+            "surgeries": { "type": "array", "items": { "type": "string" } },
+            "chronicConditions": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      "required": ["id", "name", "email"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/tests/{testId}": {
+      "schema": "Test",
+      "description": "Diagnostic tests"
+    },
+    "/appointments/{appointmentId}": {
+      "schema": "Appointment",
+      "description": "Patient appointments"
+    },
+    "/profiles/{patientId}": {
+      "schema": "PatientProfile",
+      "description": "Patient medical profiles"
+    }
+  }
+}

@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@theme {
+  --color-fasil-teal: #004d40;
+  --color-fasil-teal-dark: #00251a;
+  --color-fasil-mint: #e0f2f1;
+  --color-fasil-accent: #26a69a;
+  
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-[#0a1a1a] text-white font-sans;
+  }
+}
+
+.glass-card {
+  @apply bg-white/5 backdrop-blur-md border border-white/5 shadow-lg;
+}
+
+.status-ready {
+  @apply bg-emerald-500/10 text-emerald-500 border-emerald-500/20;
+}
+
+.status-progress {
+  @apply bg-blue-500/10 text-blue-500 border-blue-500/20;
+}
+
+.status-pending {
+  @apply bg-amber-500/10 text-amber-500 border-amber-500/20;
+}
+
+.status-delayed {
+  @apply bg-rose-500/10 text-rose-500 border-rose-500/20;
+}

@@ -1,0 +1,5 @@
+{
+  "name": "FasilCare Diagnostic Tracking",
+  "description": "A diagnostic healthcare tracking platform for public hospitals, featuring real-time SMS updates and dashboards for patients and staff.",
+  "requestFramePermissions": []
+}
