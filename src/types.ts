@@ -22,6 +22,7 @@ export interface Appointment {
   status: "Upcoming" | "Completed" | "Cancelled";
   reminderSent: boolean;
   createdAt?: string;
+  cancellationReason?: string;
 }
 
 export interface MedicalHistoryEntry {

@@ -26,7 +26,8 @@ import {
   Heart,
   UserPlus,
   LogOut,
-  Loader2
+  Loader2,
+  AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster, toast } from 'sonner';
@@ -241,6 +242,8 @@ const PatientPortal = ({ user }: { user: AppUser }) => {
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [showHistoryLog, setShowHistoryLog] = useState(false);
   const [newMedicalItem, setNewMedicalItem] = useState({ type: 'illnesses' as keyof PatientProfile['medicalHistory'], content: '' });
+  const [cancellingApt, setCancellingApt] = useState<Appointment | null>(null);
+  const [cancelReason, setCancelReason] = useState('Rescheduled');
 
   useEffect(() => {
     if (!user.uid) return;
@@ -304,6 +307,20 @@ const PatientPortal = ({ user }: { user: AppUser }) => {
     setExplaining(type);
     const text = await explainTest(type);
     setExplanation(text);
+  };
+
+  const handleCancelApt = async () => {
+    if (!cancellingApt) return;
+    try {
+      await updateDoc(doc(db, 'appointments', cancellingApt.id), {
+        status: 'Cancelled',
+        cancellationReason: cancelReason
+      });
+      setCancellingApt(null);
+      toast.success("Appointment cancelled successfully");
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `appointments/${cancellingApt.id}`);
+    }
   };
 
   const handleAddMedicalEntry = async (e: React.FormEvent) => {
@@ -584,7 +601,13 @@ const PatientPortal = ({ user }: { user: AppUser }) => {
                       )}
                       <div className="flex space-x-2">
                         <button className="flex-1 bg-slate-100 text-slate-600 py-2 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors">Reschedule</button>
-                        <button className="flex-1 border border-slate-200 text-slate-400 py-2 rounded-lg text-sm font-bold hover:bg-slate-50 transition-colors">Cancel</button>
+                        <button 
+                          onClick={() => setCancellingApt(apt)}
+                          disabled={apt.status === 'Cancelled'}
+                          className="flex-1 border border-slate-200 text-slate-400 py-2 rounded-lg text-sm font-bold hover:bg-slate-50 transition-colors disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
                       </div>
                     </div>
                   ))
@@ -1037,6 +1060,58 @@ const PatientPortal = ({ user }: { user: AppUser }) => {
 
         {/* Gemini Explanation Modal */}
         <AnimatePresence>
+          {cancellingApt && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl"
+              >
+                <div className="flex items-center space-x-3 mb-6">
+                  <div className="bg-rose-100 p-2 rounded-lg text-rose-600">
+                    <AlertTriangle className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-xl font-bold">Cancel Appointment</h3>
+                </div>
+                
+                <p className="text-slate-600 mb-6">
+                  Are you sure you want to cancel your appointment with <span className="font-bold">{cancellingApt.doctorName}</span> on {new Date(cancellingApt.date).toLocaleDateString()}?
+                </p>
+
+                <div className="space-y-4 mb-8">
+                  <label className="block text-sm font-bold text-slate-700">Reason for cancellation</label>
+                  <select 
+                    value={cancelReason}
+                    onChange={(e) => setCancelReason(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 focus:ring-2 focus:ring-fasil-teal outline-none transition-all"
+                  >
+                    <option value="Rescheduled">Rescheduled</option>
+                    <option value="No longer needed">No longer needed</option>
+                    <option value="Personal reasons">Personal reasons</option>
+                    <option value="Transportation issues">Transportation issues</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div className="flex space-x-3">
+                  <button 
+                    onClick={() => setCancellingApt(null)}
+                    className="flex-1 bg-slate-100 text-slate-600 py-3 rounded-xl font-bold hover:bg-slate-200 transition-colors"
+                  >
+                    Go Back
+                  </button>
+                  <button 
+                    onClick={handleCancelApt}
+                    className="flex-1 bg-rose-500 text-white py-3 rounded-xl font-bold hover:bg-rose-600 transition-colors"
+                  >
+                    Confirm Cancellation
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+
           {explaining && (
             <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
               <motion.div 
