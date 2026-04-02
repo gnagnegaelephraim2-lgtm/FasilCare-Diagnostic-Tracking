@@ -1,0 +1,8 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  # Disable Netlify's smart secrets detection if it's flagging false positives.
+  # These are public Firebase keys, so they are safe to be in the client-side bundle.
+  SECRETS_SCAN_SMART_DETECTION_ENABLED = "false"

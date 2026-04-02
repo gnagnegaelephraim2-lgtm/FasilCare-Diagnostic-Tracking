@@ -20,6 +20,7 @@ import {
   Calendar,
   Plus,
   History,
+  Filter,
   Phone,
   Mail,
   MapPin,
@@ -33,8 +34,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Toaster, toast } from 'sonner';
 import { Test, UserRole, Appointment, PatientProfile, User as AppUser, MedicalHistoryEntry } from './types';
 import { explainTest, suggestStaffAction } from './services/geminiService';
-import { auth, db, loginWithGoogle, logout, OperationType, handleFirestoreError } from './firebase';
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { auth, db, loginWithGoogle, logout, OperationType, handleFirestoreError, onAuthStateChanged } from './firebase';
 import { doc, getDoc, getDocs, setDoc, updateDoc, onSnapshot, collection, query, where, addDoc } from 'firebase/firestore';
 
 // --- Components ---
@@ -91,7 +91,7 @@ const LandingPage = ({ onLogin }: { onLogin: () => void }) => {
           onClick={onLogin}
           className="bg-[#141414] text-white px-6 py-2 rounded-full font-bold text-sm hover:bg-black transition-colors shadow-lg"
         >
-          Sign In
+          Demo Login
         </button>
       </nav>
 
@@ -119,7 +119,7 @@ const LandingPage = ({ onLogin }: { onLogin: () => void }) => {
                 onClick={onLogin}
                 className="bg-emerald-500 hover:bg-emerald-400 text-white px-8 py-4 rounded-xl font-bold text-lg flex items-center justify-center transition-all shadow-xl hover:scale-105"
               >
-                Get Started <ArrowRight className="ml-2 w-5 h-5" />
+                Try Demo <ArrowRight className="ml-2 w-5 h-5" />
               </button>
             </div>
 
@@ -244,6 +244,8 @@ const PatientPortal = ({ user }: { user: AppUser }) => {
   const [newMedicalItem, setNewMedicalItem] = useState({ type: 'illnesses' as keyof PatientProfile['medicalHistory'], content: '' });
   const [cancellingApt, setCancellingApt] = useState<Appointment | null>(null);
   const [cancelReason, setCancelReason] = useState('Rescheduled');
+  const [statusFilter, setStatusFilter] = useState<string>('All');
+  const [deptFilter, setDeptFilter] = useState<string>('All');
 
   useEffect(() => {
     if (!user.uid) return;
@@ -563,54 +565,111 @@ const PatientPortal = ({ user }: { user: AppUser }) => {
               exit={{ opacity: 0, y: -10 }}
               className="space-y-6"
             >
+              {/* Filters */}
+              <div className="flex flex-wrap gap-4 items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                <div className="flex items-center space-x-2">
+                  <Filter className="w-4 h-4 text-slate-400" />
+                  <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">Filters:</span>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <label className="text-xs font-bold text-slate-400 uppercase">Status</label>
+                  <select 
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-fasil-teal/20"
+                  >
+                    <option value="All">All Statuses</option>
+                    <option value="Upcoming">Upcoming</option>
+                    <option value="Completed">Completed</option>
+                    <option value="Cancelled">Cancelled</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <label className="text-xs font-bold text-slate-400 uppercase">Department</label>
+                  <select 
+                    value={deptFilter}
+                    onChange={(e) => setDeptFilter(e.target.value)}
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-fasil-teal/20"
+                  >
+                    <option value="All">All Departments</option>
+                    {Array.from(new Set(appointments.map(a => a.department))).sort().map(dept => (
+                      <option key={dept} value={dept}>{dept}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {(statusFilter !== 'All' || deptFilter !== 'All') && (
+                  <button 
+                    onClick={() => { setStatusFilter('All'); setDeptFilter('All'); }}
+                    className="text-xs font-bold text-fasil-teal hover:text-fasil-teal-dark underline ml-auto"
+                  >
+                    Clear all
+                  </button>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {loading ? (
                   <div className="animate-pulse space-y-4 col-span-2">
                     {[1, 2].map(i => <div key={i} className="h-40 bg-slate-200 rounded-xl" />)}
                   </div>
                 ) : (
-                  appointments.map(apt => (
-                    <div key={apt.id} className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm relative overflow-hidden">
-                      {apt.reminderSent && (
-                        <div className="absolute top-0 right-0 bg-blue-500 text-white text-[10px] px-2 py-0.5 rounded-bl-lg font-bold flex items-center">
-                          <Bell className="w-3 h-3 mr-1" /> Reminder Sent
-                        </div>
-                      )}
-                      <div className="flex justify-between items-start mb-4">
-                        <div>
-                          <h3 className="text-lg font-bold text-slate-900">{apt.doctorName}</h3>
-                          <p className="text-sm text-fasil-teal font-medium">{apt.department}</p>
-                        </div>
-                        <StatusBadge status={apt.status} />
+                  appointments
+                    .filter(apt => (statusFilter === 'All' || apt.status === statusFilter) && (deptFilter === 'All' || apt.department === deptFilter))
+                    .length === 0 ? (
+                      <div className="col-span-2 py-12 text-center bg-white border border-dashed border-slate-200 rounded-2xl">
+                        <Calendar className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                        <h3 className="text-lg font-bold text-slate-900">No appointments found</h3>
+                        <p className="text-slate-500">Try adjusting your filters or book a new appointment.</p>
                       </div>
-                      <div className="grid grid-cols-2 gap-4 mb-4">
-                        <div className="flex items-center text-sm text-slate-600">
-                          <Calendar className="w-4 h-4 mr-2 text-slate-400" />
-                          {new Date(apt.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
-                        </div>
-                        <div className="flex items-center text-sm text-slate-600">
-                          <Clock className="w-4 h-4 mr-2 text-slate-400" />
-                          {apt.time}
-                        </div>
-                      </div>
-                      {apt.reason && (
-                        <div className="bg-slate-50 p-3 rounded-lg text-sm text-slate-600 mb-4 border border-slate-100">
-                          <span className="font-bold text-slate-400 text-[10px] uppercase block mb-1">Reason for visit</span>
-                          {apt.reason}
-                        </div>
-                      )}
-                      <div className="flex space-x-2">
-                        <button className="flex-1 bg-slate-100 text-slate-600 py-2 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors">Reschedule</button>
-                        <button 
-                          onClick={() => setCancellingApt(apt)}
-                          disabled={apt.status === 'Cancelled'}
-                          className="flex-1 border border-slate-200 text-slate-400 py-2 rounded-lg text-sm font-bold hover:bg-slate-50 transition-colors disabled:opacity-50"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ))
+                    ) : (
+                      appointments
+                        .filter(apt => (statusFilter === 'All' || apt.status === statusFilter) && (deptFilter === 'All' || apt.department === deptFilter))
+                        .map(apt => (
+                          <div key={apt.id} className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm relative overflow-hidden">
+                            {apt.reminderSent && (
+                              <div className="absolute top-0 right-0 bg-blue-500 text-white text-[10px] px-2 py-0.5 rounded-bl-lg font-bold flex items-center">
+                                <Bell className="w-3 h-3 mr-1" /> Reminder Sent
+                              </div>
+                            )}
+                            <div className="flex justify-between items-start mb-4">
+                              <div>
+                                <h3 className="text-lg font-bold text-slate-900">{apt.doctorName}</h3>
+                                <p className="text-sm text-fasil-teal font-medium">{apt.department}</p>
+                              </div>
+                              <StatusBadge status={apt.status} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                              <div className="flex items-center text-sm text-slate-600">
+                                <Calendar className="w-4 h-4 mr-2 text-slate-400" />
+                                {new Date(apt.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                              </div>
+                              <div className="flex items-center text-sm text-slate-600">
+                                <Clock className="w-4 h-4 mr-2 text-slate-400" />
+                                {apt.time}
+                              </div>
+                            </div>
+                            {apt.reason && (
+                              <div className="bg-slate-50 p-3 rounded-lg text-sm text-slate-600 mb-4 border border-slate-100">
+                                <span className="font-bold text-slate-400 text-[10px] uppercase block mb-1">Reason for visit</span>
+                                {apt.reason}
+                              </div>
+                            )}
+                            <div className="flex space-x-2">
+                              <button className="flex-1 bg-slate-100 text-slate-600 py-2 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors">Reschedule</button>
+                              <button 
+                                onClick={() => setCancellingApt(apt)}
+                                disabled={apt.status === 'Cancelled'}
+                                className="flex-1 border border-slate-200 text-slate-400 py-2 rounded-lg text-sm font-bold hover:bg-slate-50 transition-colors disabled:opacity-50"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                    )
                 )}
               </div>
             </motion.div>
@@ -624,6 +683,51 @@ const PatientPortal = ({ user }: { user: AppUser }) => {
               exit={{ opacity: 0, y: -10 }}
               className="space-y-6"
             >
+              {/* Filters */}
+              <div className="flex flex-wrap gap-4 items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                <div className="flex items-center space-x-2">
+                  <Filter className="w-4 h-4 text-slate-400" />
+                  <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">Filters:</span>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <label className="text-xs font-bold text-slate-400 uppercase">Status</label>
+                  <select 
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-fasil-teal/20"
+                  >
+                    <option value="All">All Statuses</option>
+                    <option value="Upcoming">Upcoming</option>
+                    <option value="Completed">Completed</option>
+                    <option value="Cancelled">Cancelled</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <label className="text-xs font-bold text-slate-400 uppercase">Department</label>
+                  <select 
+                    value={deptFilter}
+                    onChange={(e) => setDeptFilter(e.target.value)}
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-fasil-teal/20"
+                  >
+                    <option value="All">All Departments</option>
+                    {Array.from(new Set(appointments.map(a => a.department))).sort().map(dept => (
+                      <option key={dept} value={dept}>{dept}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {(statusFilter !== 'All' || deptFilter !== 'All') && (
+                  <button 
+                    onClick={() => { setStatusFilter('All'); setDeptFilter('All'); }}
+                    className="text-xs font-bold text-fasil-teal hover:text-fasil-teal-dark underline ml-auto"
+                  >
+                    Clear all
+                  </button>
+                )}
+              </div>
+
               <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center">
                   <h3 className="font-bold text-slate-900">Appointment History</h3>
@@ -633,13 +737,14 @@ const PatientPortal = ({ user }: { user: AppUser }) => {
                 <div className="divide-y divide-slate-100">
                   {loading ? (
                     <div className="p-12 text-center text-slate-400">Loading visit log...</div>
-                  ) : appointments.length === 0 ? (
+                  ) : appointments.filter(apt => (statusFilter === 'All' || apt.status === statusFilter) && (deptFilter === 'All' || apt.department === deptFilter)).length === 0 ? (
                     <div className="p-12 text-center text-slate-400">
                       <History className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                      <p>No visit history found.</p>
+                      <p>No matching appointments found.</p>
                     </div>
                   ) : (
                     [...appointments]
+                      .filter(apt => (statusFilter === 'All' || apt.status === statusFilter) && (deptFilter === 'All' || apt.department === deptFilter))
                       .sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime())
                       .map((apt, i) => (
                         <div key={apt.id || i} className="p-6 hover:bg-slate-50/50 transition-colors">
@@ -1152,6 +1257,7 @@ const StaffPortal = ({ user }: { user: AppUser }) => {
   const [showNewTest, setShowNewTest] = useState(false);
   const [updatingTest, setUpdatingTest] = useState<Test | null>(null);
   const [pendingStatus, setPendingStatus] = useState<Test['status'] | null>(null);
+  const [pendingWaitingDays, setPendingWaitingDays] = useState<number | null>(null);
   const [showConfirmUpdate, setShowConfirmUpdate] = useState(false);
   const [processingReminders, setProcessingReminders] = useState(false);
 
@@ -1229,9 +1335,13 @@ const StaffPortal = ({ user }: { user: AppUser }) => {
     }
   };
 
-  const handleUpdateStatus = async (testId: string, status: Test['status'], progress: number) => {
+  const handleUpdateStatus = async (testId: string, status: Test['status'], progress: number, waitingDays?: number) => {
     try {
-      await updateDoc(doc(db, 'tests', testId), { status, progress });
+      const updateData: any = { status, progress };
+      if (waitingDays !== undefined) {
+        updateData.waitingDays = waitingDays;
+      }
+      await updateDoc(doc(db, 'tests', testId), updateData);
       setUpdatingTest(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `tests/${testId}`);
@@ -1261,13 +1371,7 @@ const StaffPortal = ({ user }: { user: AppUser }) => {
     }
   };
 
-  const delayedCount = tests.filter(t => {
-    const requestedDate = new Date(t.requestedDate);
-    const now = new Date();
-    const diffTime = Math.abs(now.getTime() - requestedDate.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return t.status === 'Delayed' || diffDays > 14;
-  }).length;
+  const delayedCount = tests.filter(t => t.waitingDays > 7 && t.status !== 'Results ready').length;
 
   const getWaitingDays = (requestedDateStr: string) => {
     const requestedDate = new Date(requestedDateStr);
@@ -1384,8 +1488,8 @@ const StaffPortal = ({ user }: { user: AppUser }) => {
                       <StatusBadge status={test.status} />
                     </td>
                     <td className="px-6 py-4">
-                      <div className={`text-sm font-bold ${getWaitingDays(test.requestedDate) > 10 ? 'text-rose-600' : 'text-slate-600'}`}>
-                        {getWaitingDays(test.requestedDate)} days
+                      <div className={`text-sm font-bold ${test.waitingDays > 7 ? 'text-rose-600' : 'text-slate-600'}`}>
+                        {test.waitingDays} days
                       </div>
                     </td>
                     <td className="px-6 py-4 max-w-xs">
@@ -1514,6 +1618,19 @@ const StaffPortal = ({ user }: { user: AppUser }) => {
                       <option value="Delayed">Delayed</option>
                     </select>
                   </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Waiting Days</label>
+                    <input 
+                      type="number"
+                      defaultValue={updatingTest.waitingDays}
+                      onChange={(e) => {
+                        setPendingWaitingDays(parseInt(e.target.value));
+                      }}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm"
+                      placeholder="e.g. 5"
+                    />
+                  </div>
                   
                   <div className="flex space-x-3 pt-4">
                     <button 
@@ -1527,8 +1644,15 @@ const StaffPortal = ({ user }: { user: AppUser }) => {
                     </button>
                     <button 
                       onClick={() => {
-                        if (pendingStatus && pendingStatus !== updatingTest.status) {
+                        const finalStatus = pendingStatus || updatingTest.status;
+                        const finalWaitingDays = pendingWaitingDays !== null ? pendingWaitingDays : updatingTest.waitingDays;
+                        
+                        if (finalStatus !== updatingTest.status) {
                           setShowConfirmUpdate(true);
+                        } else if (finalWaitingDays !== updatingTest.waitingDays) {
+                          handleUpdateStatus(updatingTest.id, finalStatus, updatingTest.progress, finalWaitingDays);
+                          setUpdatingTest(null);
+                          setPendingWaitingDays(null);
                         } else {
                           setUpdatingTest(null);
                         }
@@ -1585,9 +1709,13 @@ const StaffPortal = ({ user }: { user: AppUser }) => {
                       if (pendingStatus === 'Results ready') progress = 100;
                       if (pendingStatus === 'In progress') progress = 50;
                       if (pendingStatus === 'Pending') progress = 10;
-                      handleUpdateStatus(updatingTest.id, pendingStatus, progress);
+                      
+                      const finalWaitingDays = pendingWaitingDays !== null ? pendingWaitingDays : updatingTest.waitingDays;
+                      handleUpdateStatus(updatingTest.id, pendingStatus, progress, finalWaitingDays);
+                      
                       setShowConfirmUpdate(false);
                       setPendingStatus(null);
+                      setPendingWaitingDays(null);
                       toast.success(`Status updated to ${pendingStatus}`);
                     }}
                     className="flex-1 bg-fasil-teal text-white py-3 rounded-xl font-bold hover:bg-fasil-teal-dark transition-colors"
@@ -1663,12 +1791,12 @@ const StaffPortal = ({ user }: { user: AppUser }) => {
 // --- Main App ---
 
 export default function App() {
-  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [user, setUser] = useState<any | null>(null);
   const [userProfile, setUserProfile] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
       setUser(firebaseUser);
       if (firebaseUser) {
         // Fetch profile
